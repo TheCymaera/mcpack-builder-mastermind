@@ -18,7 +18,7 @@ const answerLocation = new Vector3(4, 54, -5);
 const answerStride = new Vector3(-1, 0, 0);
 
 const guessStride = new Vector3(0,0,-1);
-const resultStride = new Vector3(1,1,0);
+const resultStride = new Vector3(1,1,0); // relative to guess
 
 const resultIntervalTicks = 5;
 
@@ -112,7 +112,7 @@ const renderResults = datapack.internalMcfunction("render_results")
 	// this row keeps track of which blocks have been matched to the answer
 	yield command`fill ~ ~-2 ~ ~${finalGuessBlock.x} ~-2 ~${finalGuessBlock.z} ${usedPalette.unused}`;
 	
-	// this row stores the answer
+	// this row stores the result
 	yield command`fill ~ ~-3 ~ ~${finalGuessBlock.x} ~-3 ~${finalGuessBlock.z} ${resultPalette.incorrect}`;
 
 	for (let i = 0; i < codeLength; i++) {
@@ -176,7 +176,7 @@ const renderResults = datapack.internalMcfunction("render_results")
 		}
 	}
 
-	// animate answer
+	// animate result
 	const displayResult = datapack.internalMcfunction("display_result").set(function * () {
 		yield execute`if block ~ ~-3 ~ ${resultPalette.correct} positioned ~${resultStride.x} ~${resultStride.y} ~${resultStride.z}`.run(displayCorrect.run());
 		yield execute`if block ~ ~-3 ~ ${resultPalette.wrongPosition} positioned ~${resultStride.x} ~${resultStride.y} ~${resultStride.z}`.run(displayWrongPosition.run());
