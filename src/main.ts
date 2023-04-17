@@ -23,7 +23,7 @@ const resultStride = new Vector3(1,1,0); // relative to guess
 const resultIntervalTicks = 5;
 
 const blockPalette = {
-	// some blocks have states, so they need to be replaced with a stateless block before checking
+	// some blocks have states. they need to be replaced with a stateless block before comparison.
 	"minecraft:brown_mushroom_block": "minecraft:brown_concrete",
 	"minecraft:red_mushroom_block": "minecraft:red_concrete",
 	"minecraft:mushroom_stem": "minecraft:white_concrete",
@@ -62,16 +62,16 @@ datapack.mcfunction(namespace.id("randomize_code")).set(function * () {
 	for (let i = 0; i < codeLength; i++) {
 		const blockLocation = answerLocation.clone().add(answerStride.clone().multiply(i));
 
-		// summon a falling sand for each block type,
-		// kill all but one
+		// summon a falling block for each block type, then kill all but one of them
 		yield datapack.internalMcfunction("summon_block").set(function * () {
+			// NoGravity prevents the block from breaking due to entity cramping.
+			// Remove other blocks before re-enabling gravity.
 			for (const block of Object.keys(blockPalette)) {
 				yield command`summon minecraft:falling_block ${blockLocation.x} ${blockLocation.y} ${blockLocation.z} {NoGravity: 1b, BlockState:{Name:"${block}"}, Motion: [0.0d,0.0d,0.0d], Time: 100}`;
 			}
 	
 			yield command`kill @e[type=minecraft:falling_block,limit=${Object.keys(blockPalette).length - 1},sort=random]`;
 
-			// remove no gravity
 			yield command`data modify entity @e[type=minecraft:falling_block,limit=1] NoGravity set value 0b`;
 		}).scheduleAppend(Duration.ticks(5 * i + 1));
 	}
@@ -109,20 +109,20 @@ const renderResults = datapack.internalMcfunction("render_results")
 .set(function * () {
 	const finalGuessBlock = guessStride.clone().multiply(codeLength - 1);
 
-	// this row keeps track of which blocks have been matched to the answer
+	// this row (-2) keeps track of which blocks have been matched to the answer
 	yield command`fill ~ ~-2 ~ ~${finalGuessBlock.x} ~-2 ~${finalGuessBlock.z} ${usedPalette.unused}`;
 	
-	// this row stores the result
+	// this row (-3) stores the result
 	yield command`fill ~ ~-3 ~ ~${finalGuessBlock.x} ~-3 ~${finalGuessBlock.z} ${resultPalette.incorrect}`;
 
 	for (let i = 0; i < codeLength; i++) {
 		const guessBlock = guessStride.clone().multiply(i);
 		const answerBlock = answerLocation.clone().add(answerStride.clone().multiply(i));
 		
-		// this row stores the guess
+		// this row (-4) stores the guess
 		yield command`clone ~${guessBlock.x} ~ ~${guessBlock.z} ~${guessBlock.x} ~ ~${guessBlock.z} ~${guessBlock.x} ~-4 ~${guessBlock.z} replace`;
 
-		// this row stores the answer
+		// this row (-5) stores the answer
 		yield command`clone ${answerBlock.x} ${answerBlock.y} ${answerBlock.z} ${answerBlock.x} ${answerBlock.y} ${answerBlock.z} ~${guessBlock.x} ~-5 ~${guessBlock.z} replace`;
 	}
 
@@ -133,7 +133,7 @@ const renderResults = datapack.internalMcfunction("render_results")
 	}
 
 
-	// perfect match
+	// find perfect match
 	const foundCorrect = datapack.internalMcfunction("correct")
 	.set(function * () {
 		yield command`setblock ~ ~-2 ~ ${usedPalette.used}`;
@@ -147,7 +147,7 @@ const renderResults = datapack.internalMcfunction("render_results")
 		`.run(foundCorrect.run())
 	}
 
-	// wrong position
+	// find wrong position
 	for (let guess = 0; guess < codeLength; guess++) {
 		for (let answer = 0; answer < codeLength; answer++) {
 			const guessBlock = guessStride.clone().multiply(guess);
@@ -185,7 +185,7 @@ const renderResults = datapack.internalMcfunction("render_results")
 	for (let i = 0; i < codeLength; i++) {
 		const interval = Duration.ticks(resultIntervalTicks * i + 1);
 
-		// calling a function via schedule will not preserve its context, so we need to position it relative to the marker
+		// calling a function via /schedule will not preserve its context, so we need to position it relative to the marker
 		yield datapack.internalMcfunction(`display_result_${i}`).set(function * () {
 			yield execute`at @e[tag=mastermind_marker] positioned ~${guessStride.x * i} ~ ~${guessStride.z * i}`.run(displayResult.run());
 		}).scheduleAppend(interval);
