@@ -1,6 +1,4 @@
-import { Datapack, Duration, Namespace, NamespacedID, command, execute } from "npm:mcpack-builder@alpha";
-
-
+import { Datapack, Duration, Namespace, NamespacedID, command, execute } from "../../mcpack-builder/src/mod.ts";
 import { Vector3 } from "npm:open-utilities@1/core/maths/Vector3.js";
 import { emptyFolder, writeFiles } from "./fileUtilities.ts";
 
