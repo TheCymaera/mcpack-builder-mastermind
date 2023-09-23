@@ -1,5 +1,5 @@
-import { Datapack, Duration, Namespace, NamespacedID, command, execute } from "../../mcpack-builder/src/mod.ts";
-import { Vector3 } from "npm:open-utilities@1/core/maths/Vector3.js";
+import { Datapack, Duration, Namespace, NamespacedID, command, execute, mcfunction, scheduler } from "mcpack-builder";
+import { Vector3 } from "open-utilities/core/maths/Vector3.js";
 import { emptyFolder, writeFiles } from "./fileUtilities.ts";
 
 // output
@@ -8,7 +8,7 @@ const datapack = new Datapack;
 
 // config
 const namespace = new Namespace("mastermind");
-datapack.internalNamespace = namespace.id("internal");
+const internalNamespace = namespace.id("zzz_internal");
 
 const codeLength = 4;
 
@@ -53,7 +53,7 @@ datapack.staticFiles.set(`data/${namespace.namespace}/tags/blocks/palette_or_air
 	values: [...Object.keys(blockPalette).map(id => id.toString()), "minecraft:air"],
 }));
 
-datapack.mcfunction(namespace.id("randomize_code")).set(function * () {
+datapack.mcfunctions.set(namespace.id("randomize_code"), mcfunction(function * () {
 	const finalBlock = answerLocation.clone().add(answerStride.clone().multiply(codeLength - 1));
 	yield command`fill ${answerLocation.x} ${answerLocation.y} ${answerLocation.z} ${finalBlock.x} ${finalBlock.y} ${finalBlock.z} air`;
 
@@ -61,7 +61,9 @@ datapack.mcfunction(namespace.id("randomize_code")).set(function * () {
 		const blockLocation = answerLocation.clone().add(answerStride.clone().multiply(i));
 
 		// summon a falling block for each block type, then kill all but one of them
-		yield datapack.internalMcfunction("summon_block").set(function * () {
+		yield scheduler.append(Duration.ticks(5 * i + 1), mcfunction(function * () {
+			this.label = `summonBlock`;
+
 			// NoGravity prevents the block from breaking due to entity cramping.
 			// Remove other blocks before re-enabling gravity.
 			for (const block of Object.keys(blockPalette)) {
@@ -71,40 +73,39 @@ datapack.mcfunction(namespace.id("randomize_code")).set(function * () {
 			yield command`kill @e[type=minecraft:falling_block,limit=${Object.keys(blockPalette).length - 1},sort=random]`;
 
 			yield command`data modify entity @e[type=minecraft:falling_block,limit=1] NoGravity set value 0b`;
-		}).scheduleAppend(Duration.ticks(5 * i + 1));
+		}));
 	}
-});
+}));
 
-datapack.mcfunction(namespace.id("summon_blocks"))
-.set(function * () {
+datapack.mcfunctions.set(namespace.id("summon_blocks"), mcfunction(function * () {
 	for (const block of Object.keys(blockPalette)) {
 		yield command`summon minecraft:item ~ ~ ~ {Item:{id:"${block}",Count:1}}`;
 	}
-});
+}));
 
-const displayCorrect = datapack.internalMcfunction("display_correct")
-.set(function * () {
+const displayCorrect = mcfunction(function * () {
+	this.label = "display_correct"
 	yield command`setblock ~ ~ ~ minecraft:poppy`;
 	yield command`execute at @a run playsound minecraft:block.note_block.xylophone block @a ~ ~ ~ 1 2`;
 	yield command`particle minecraft:dust 255 0 0 1 ~ ~ ~ 0 0 0 0 1 force`;
 });
 
-const displayWrongPosition = datapack.internalMcfunction("display_wrong_position")
-.set(function * () {
+const displayWrongPosition = mcfunction(function * () {
+	this.label = "display_wrong_position"
 	yield command`setblock ~ ~ ~ minecraft:dandelion`;
 	yield command`execute at @a run playsound minecraft:block.note_block.xylophone block @a ~ ~ ~ 1 0`;
 	yield command`particle minecraft:dust 255 255 0 1 ~ ~ ~ 0 0 0 0 1 force`;
 });
 
-const displayIncorrect = datapack.internalMcfunction("display_incorrect")
-.set(function * () {
+const displayIncorrect = mcfunction(function * () {
+	this.label = "display_incorrect";
 	yield command`setblock ~ ~ ~ minecraft:dead_bush`;
 	yield command`execute at @a run playsound minecraft:block.note_block.basedrum block @a ~ ~ ~ 0.3 0`;
 	yield command`particle minecraft:dust 0 0 0 1 ~ ~ ~ 0 0 0 0 1 force`;
 });
 
-const renderResults = datapack.internalMcfunction("render_results")
-.set(function * () {
+const renderResults = mcfunction(function * () {
+	this.label = "renderResults";
 	const finalGuessBlock = guessStride.clone().multiply(codeLength - 1);
 
 	// this row (-2) keeps track of which blocks have been matched to the answer
@@ -132,8 +133,8 @@ const renderResults = datapack.internalMcfunction("render_results")
 
 
 	// find perfect match
-	const foundCorrect = datapack.internalMcfunction("correct")
-	.set(function * () {
+	const foundCorrect = mcfunction(function * () {
+		this.label = "correct";
 		yield command`setblock ~ ~-2 ~ ${usedPalette.used}`;
 		yield command`setblock ~ ~-3 ~ ${resultPalette.correct}`;
 	});
@@ -161,44 +162,49 @@ const renderResults = datapack.internalMcfunction("render_results")
 					~${guessBlock.x} ~-4 ~${guessBlock.z} 
 					~${guessBlock.x} ~-4 ~${guessBlock.z} 
 					~${answerBlock.x} ~-5 ~${answerBlock.z} all
-			`.run(
-				datapack.internalMcfunction("wrong_position")
-				.set(function * () {
-					// mark this block as "wrong position"
-					yield command`setblock ~${guessBlock.x} ~-3 ~${guessBlock.z} ${resultPalette.wrongPosition}`;
+			`.runFunction(mcfunction(function * () {
+				this.label = "wrongPosition";
 
-					// mark this block as "used"
-					yield command`setblock ~${answerBlock.x} ~-2 ~${answerBlock.z} ${usedPalette.used}`;
-				}).run()
-			);
+				// mark this block as "wrong position"
+				yield command`setblock ~${guessBlock.x} ~-3 ~${guessBlock.z} ${resultPalette.wrongPosition}`;
+
+				// mark this block as "used"
+				yield command`setblock ~${answerBlock.x} ~-2 ~${answerBlock.z} ${usedPalette.used}`;
+			}));
 		}
 	}
 
 	// animate result
-	const displayResult = datapack.internalMcfunction("display_result").set(function * () {
+	const displayResult = mcfunction(function * () {
+		this.label = "displayResult";
 		yield execute`if block ~ ~-3 ~ ${resultPalette.correct} positioned ~${resultStride.x} ~${resultStride.y} ~${resultStride.z}`.run(displayCorrect.run());
 		yield execute`if block ~ ~-3 ~ ${resultPalette.wrongPosition} positioned ~${resultStride.x} ~${resultStride.y} ~${resultStride.z}`.run(displayWrongPosition.run());
 		yield execute`if block ~ ~-3 ~ ${resultPalette.incorrect} positioned ~${resultStride.x} ~${resultStride.y} ~${resultStride.z}`.run(displayIncorrect.run());
 	});
+
 	for (let i = 0; i < codeLength; i++) {
 		const interval = Duration.ticks(resultIntervalTicks * i + 1);
 
 		// calling a function via /schedule will not preserve its context, so we need to position it relative to the marker
-		yield datapack.internalMcfunction(`display_result_${i}`).set(function * () {
-			yield execute`at @e[tag=mastermind_marker] positioned ~${guessStride.x * i} ~ ~${guessStride.z * i}`.run(displayResult.run());
-		}).scheduleAppend(interval);
+		yield scheduler.append(interval, mcfunction(function * () {
+			this.label = `display_result_${i}`;
+			yield execute`at @e[tag=mastermind_marker] positioned ~${guessStride.x * i} ~ ~${guessStride.z * i}`.runFunction(displayResult);
+		}));
 	}
 });
 
 
 	
-const removeMarker = datapack.internalMcfunction("remove_marker").set(function * () {
+const removeMarker = mcfunction(function * () {
+	this.label = "removeMarker";
 	yield command`kill @e[tag=mastermind_marker]`;
 });
 
 
+submitAnswer(namespace.id("submit_answer"), false);
+submitAnswer(namespace.id("submit_answer_final"), true);
 function submitAnswer(id: NamespacedID, final: boolean) {
-	datapack.mcfunction(id).set(function * () {
+	datapack.mcfunctions.set(id, mcfunction(function * () {
 		yield command`summon minecraft:marker ~ ~ ~ {Tags:["mastermind_marker"]}`;
 
 		yield renderResults.run();
@@ -213,22 +219,19 @@ function submitAnswer(id: NamespacedID, final: boolean) {
 
 		yield command`title @a times 0 20 0`;
 		if (final) yield command`title @a title {"text":"You Lose!", "color": "red"}`
-		yield execute`${conditions.join(" ")}`.run(
-			datapack.internalMcfunction("on_win").set(function * () {
-				yield command`title @a title {"text":"You Win!"}`;
-				yield command`tag @a add mastermind_win`;
-			}).run()
-		);
+		yield execute`${conditions.join(" ")}`.runFunction(mcfunction(function * () {
+			this.label = "onWin";
+			yield command`title @a title {"text":"You Win!"}`;
+			yield command`tag @a add mastermind_win`;
+		}));
 
-		yield removeMarker.scheduleReplace(finalInterval);
-	});
+		yield scheduler.replace(finalInterval, removeMarker);
+	}));
 }
 
-submitAnswer(namespace.id("submit_answer"), false);
-submitAnswer(namespace.id("submit_answer_final"), true);
 
 
 console.log("Writing files...");
 await emptyFolder(outputPath);
-await writeFiles(outputPath, datapack.build().files);
+await writeFiles(outputPath, datapack.build({ internalNamespace }).files);
 console.log("Complete!");
