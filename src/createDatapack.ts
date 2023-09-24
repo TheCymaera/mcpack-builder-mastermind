@@ -37,7 +37,7 @@ const resultPalette = {
 	incorrect: "minecraft:black_glazed_terracotta",
 }
 
-const usedPalette = {
+const matchedPalette = {
 	used: "minecraft:stone",
 	unused: "minecraft:barrier",
 }
@@ -84,32 +84,32 @@ datapack.mcfunctions.set(namespace.id("summon_blocks"), mcfunction(function * ()
 }));
 
 const displayCorrect = mcfunction(function * () {
-	this.label = "display_correct"
+	this.label = "displayCorrect"
 	yield command`setblock ~ ~ ~ minecraft:poppy`;
 	yield command`execute at @a run playsound minecraft:block.note_block.xylophone block @a ~ ~ ~ 1 2`;
 	yield command`particle minecraft:dust 255 0 0 1 ~ ~ ~ 0 0 0 0 1 force`;
 });
 
 const displayWrongPosition = mcfunction(function * () {
-	this.label = "display_wrong_position"
+	this.label = "displayWrongPosition"
 	yield command`setblock ~ ~ ~ minecraft:dandelion`;
 	yield command`execute at @a run playsound minecraft:block.note_block.xylophone block @a ~ ~ ~ 1 0`;
 	yield command`particle minecraft:dust 255 255 0 1 ~ ~ ~ 0 0 0 0 1 force`;
 });
 
 const displayIncorrect = mcfunction(function * () {
-	this.label = "display_incorrect";
+	this.label = "displayIncorrect";
 	yield command`setblock ~ ~ ~ minecraft:dead_bush`;
 	yield command`execute at @a run playsound minecraft:block.note_block.basedrum block @a ~ ~ ~ 0.3 0`;
 	yield command`particle minecraft:dust 0 0 0 1 ~ ~ ~ 0 0 0 0 1 force`;
 });
 
-const renderResults = mcfunction(function * () {
-	this.label = "renderResults";
+const calculateResult = mcfunction(function * () {
+	this.label = "calculateResult";
 	const finalGuessBlock = guessStride.clone().multiply(codeLength - 1);
 
 	// this row (-2) keeps track of which blocks have been matched to the answer
-	yield command`fill ~ ~-2 ~ ~${finalGuessBlock.x} ~-2 ~${finalGuessBlock.z} ${usedPalette.unused}`;
+	yield command`fill ~ ~-2 ~ ~${finalGuessBlock.x} ~-2 ~${finalGuessBlock.z} ${matchedPalette.unused}`;
 	
 	// this row (-3) stores the result
 	yield command`fill ~ ~-3 ~ ~${finalGuessBlock.x} ~-3 ~${finalGuessBlock.z} ${resultPalette.incorrect}`;
@@ -134,8 +134,8 @@ const renderResults = mcfunction(function * () {
 
 	// find perfect match
 	const foundCorrect = mcfunction(function * () {
-		this.label = "correct";
-		yield command`setblock ~ ~-2 ~ ${usedPalette.used}`;
+		this.label = "foundCorrect";
+		yield command`setblock ~ ~-2 ~ ${matchedPalette.used}`;
 		yield command`setblock ~ ~-3 ~ ${resultPalette.correct}`;
 	});
 
@@ -143,7 +143,7 @@ const renderResults = mcfunction(function * () {
 		yield execute`
 			positioned ~${guessStride.x * i} ~ ~${guessStride.z * i} 
 			if blocks ~ ~-4 ~ ~ ~-4 ~ ~ ~-5 ~ all
-		`.run(foundCorrect.run())
+		`.runFunction(foundCorrect)
 	}
 
 	// find wrong position
@@ -153,23 +153,23 @@ const renderResults = mcfunction(function * () {
 			const answerBlock = guessStride.clone().multiply(answer);
 
 			// ignore items that already have a result
-			// ignore items that have been "used"
+			// ignore items that have been matched
 		
 			yield execute`
 				if block ~${guessBlock.x} ~-3 ~${guessBlock.z} ${resultPalette.incorrect} 
-				if block ~${answerBlock.x} ~-2 ~${answerBlock.z} ${usedPalette.unused} 
+				if block ~${answerBlock.x} ~-2 ~${answerBlock.z} ${matchedPalette.unused} 
 				if blocks 
 					~${guessBlock.x} ~-4 ~${guessBlock.z} 
 					~${guessBlock.x} ~-4 ~${guessBlock.z} 
 					~${answerBlock.x} ~-5 ~${answerBlock.z} all
 			`.runFunction(mcfunction(function * () {
-				this.label = "wrongPosition";
+				this.label = "foundWrongPosition";
 
 				// mark this block as "wrong position"
 				yield command`setblock ~${guessBlock.x} ~-3 ~${guessBlock.z} ${resultPalette.wrongPosition}`;
 
-				// mark this block as "used"
-				yield command`setblock ~${answerBlock.x} ~-2 ~${answerBlock.z} ${usedPalette.used}`;
+				// mark this block as matched
+				yield command`setblock ~${answerBlock.x} ~-2 ~${answerBlock.z} ${matchedPalette.used}`;
 			}));
 		}
 	}
@@ -187,7 +187,7 @@ const renderResults = mcfunction(function * () {
 
 		// calling a function via /schedule will not preserve its context, so we need to position it relative to the marker
 		yield scheduler.append(interval, mcfunction(function * () {
-			this.label = `display_result_${i}`;
+			this.label = `displayResult`;
 			yield execute`at @e[tag=mastermind_marker] positioned ~${guessStride.x * i} ~ ~${guessStride.z * i}`.runFunction(displayResult);
 		}));
 	}
@@ -200,6 +200,19 @@ const removeMarker = mcfunction(function * () {
 	yield command`kill @e[tag=mastermind_marker]`;
 });
 
+const onWin = mcfunction(function * () {
+	this.label = "onWin";
+	yield command`title @a title {"text":"You Win!"}`;
+	yield command`tag @a add mastermind_game_end`;
+});
+
+const onLoose = mcfunction(function*() {
+	this.label = "onLoose";
+	yield command`title @a title {"text":"You Lose!", "color": "red"}`
+	yield command`tag @a add mastermind_game_end`;
+});
+
+
 
 submitAnswer(namespace.id("submit_answer"), false);
 submitAnswer(namespace.id("submit_answer_final"), true);
@@ -207,7 +220,7 @@ function submitAnswer(id: NamespacedID, final: boolean) {
 	datapack.mcfunctions.set(id, mcfunction(function * () {
 		yield command`summon minecraft:marker ~ ~ ~ {Tags:["mastermind_marker"]}`;
 
-		yield renderResults.run();
+		yield calculateResult.run();
 		
 		const finalInterval = Duration.ticks(resultIntervalTicks * codeLength + 1);
 
@@ -218,12 +231,10 @@ function submitAnswer(id: NamespacedID, final: boolean) {
 		}
 
 		yield command`title @a times 0 20 0`;
-		if (final) yield command`title @a title {"text":"You Lose!", "color": "red"}`
-		yield execute`${conditions.join(" ")}`.runFunction(mcfunction(function * () {
-			this.label = "onWin";
-			yield command`title @a title {"text":"You Win!"}`;
-			yield command`tag @a add mastermind_win`;
-		}));
+
+		// if the player wins, the loose message will be immediately overridden
+		if (final) yield onLoose.run();
+		yield execute`${conditions.join(" ")}`.runFunction(onWin);
 
 		yield scheduler.replace(finalInterval, removeMarker);
 	}));
