@@ -49,10 +49,6 @@ datapack.packMeta = {
 	},
 };
 
-datapack.staticFiles.set(`data/${namespace.namespace}/tags/blocks/palette_or_air.json`, JSON.stringify({
-	values: [...Object.keys(blockPalette).map(id => id.toString()), "minecraft:air"],
-}));
-
 datapack.mcfunctions.set(namespace.id("randomize_code"), mcfunction(function * () {
 	const finalBlock = answerLocation.clone().add(answerStride.clone().multiply(codeLength - 1));
 	yield command`fill ${answerLocation.x} ${answerLocation.y} ${answerLocation.z} ${finalBlock.x} ${finalBlock.y} ${finalBlock.z} air`;
